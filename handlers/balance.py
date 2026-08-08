@@ -1,10 +1,15 @@
+import logging
 from aiogram import Router, F, Bot
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 import database as db
 from config import CLICK_CARD, PAYNET_CARD, ADMIN_CHAT_ID
-from keyboards import BTN_TOPUP, BTN_BACK, main_menu_kb, back_only_kb, topup_methods_kb, admin_topup_kb
+from keyboards import (
+    BTN_TOPUP, BTN_BACK, BTN_NUMBER, BTN_MY_ORDERS, BTN_BALANCE, BTN_HELP,
+    main_menu_kb, back_only_kb, topup_methods_kb, admin_topup_kb,
+)
 from states import TopUpStates
+from utils import user_ref
 
 router = Router()
 
@@ -58,17 +63,41 @@ async def receipt_received(message: Message, state: FSMContext, bot: Bot):
         reply_markup=main_menu_kb(),
     )
     if ADMIN_CHAT_ID:
-        await bot.send_photo(
-            ADMIN_CHAT_ID,
-            file_id,
-            caption=(
-                f"💰 Заявка на пополнение №{topup_id}\n"
-                f"Пользователь: {message.from_user.id} (@{message.from_user.username})\n"
-                f"Способ: {METHOD_NAMES.get(method, method)}\n\n"
-                f"Проверьте сумму на чеке и нажмите «Принять» или «Отклонить»."
-            ),
-            reply_markup=admin_topup_kb(topup_id),
-        )
+        try:
+            await bot.send_photo(
+                ADMIN_CHAT_ID,
+                file_id,
+                caption=(
+                    f"💰 Заявка на пополнение №{topup_id}\n"
+                    f"Пользователь: {user_ref(message.from_user.id, message.from_user.username)}\n"
+                    f"Способ: {METHOD_NAMES.get(method, method)}\n\n"
+                    f"Проверьте сумму на чеке и нажмите «Принять» или «Отклонить»."
+                ),
+                reply_markup=admin_topup_kb(topup_id),
+            )
+        except Exception:
+            logging.exception("Не удалось отправить заявку на пополнение №%s в ADMIN_CHAT_ID", topup_id)
+
+
+_MENU_INTERRUPT_TEXTS = {BTN_NUMBER, BTN_MY_ORDERS, BTN_BALANCE, BTN_HELP}
+
+
+@router.message(TopUpStates.waiting_receipt, F.text.in_(_MENU_INTERRUPT_TEXTS))
+async def interrupt_topup_flow(message: Message, state: FSMContext):
+    """Если во время ожидания чека пользователь нажал другую кнопку меню —
+    раньше бот просил прислать фото вместо перехода в нужный раздел."""
+    from handlers.menu import take_number, my_orders, my_balance, help_start  # локальный импорт: избегаем цикла menu<->balance при старте
+
+    await state.clear()
+    text = message.text
+    if text == BTN_NUMBER:
+        await take_number(message)
+    elif text == BTN_MY_ORDERS:
+        await my_orders(message)
+    elif text == BTN_BALANCE:
+        await my_balance(message)
+    elif text == BTN_HELP:
+        await help_start(message, state)
 
 
 @router.message(TopUpStates.waiting_receipt)
