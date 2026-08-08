@@ -1,13 +1,15 @@
+import logging
 from aiogram import Router, F, Bot
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 import database as db
 from config import ADMIN_CHAT_ID
 from keyboards import (
-    BTN_ORDER, BTN_NUMBER, BTN_MY_ORDERS, BTN_TOPUP, BTN_BALANCE, BTN_HELP, BTN_BACK,
-    main_menu_kb, back_only_kb, platforms_kb, take_number_kb,
+    BTN_NUMBER, BTN_MY_ORDERS, BTN_BALANCE, BTN_HELP, BTN_BACK,
+    main_menu_kb, back_only_kb, take_number_kb,
 )
 from states import HelpStates
+from utils import user_ref
 
 router = Router()
 
@@ -66,9 +68,9 @@ async def help_received(message: Message, state: FSMContext, bot: Bot):
         try:
             await bot.send_message(
                 ADMIN_CHAT_ID,
-                f"❓ Вопрос от пользователя {message.from_user.id} (@{message.from_user.username}):\n\n"
+                f"❓ Вопрос от пользователя {user_ref(message.from_user.id, message.from_user.username)}:\n\n"
                 f"{message.text}\n\n"
                 f"Ответить: /reply {message.from_user.id} текст_ответа",
             )
         except Exception:
-            pass
+            logging.exception("Не удалось отправить вопрос в поддержку в ADMIN_CHAT_ID")
