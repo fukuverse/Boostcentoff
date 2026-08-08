@@ -1,9 +1,11 @@
+import logging
 from aiogram import Router, Bot
 from aiogram.filters import CommandStart
 from aiogram.types import Message
 import database as db
 from config import ADMIN_CHAT_ID
 from keyboards import main_menu_kb, site_kb
+from utils import user_ref
 
 router = Router()
 
@@ -21,10 +23,10 @@ async def _greet(message: Message, bot: Bot):
         try:
             await bot.send_message(
                 ADMIN_CHAT_ID,
-                f"🆕 Новый пользователь: {message.from_user.id} (@{message.from_user.username})",
+                f"🆕 Новый пользователь: {user_ref(message.from_user.id, message.from_user.username)}",
             )
         except Exception:
-            pass
+            logging.exception("Не удалось отправить уведомление о новом пользователе")
 
 
 @router.message(CommandStart())
