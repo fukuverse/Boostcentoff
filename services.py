@@ -66,9 +66,9 @@ SERVICES = {
     "ig_views": {
         "platform": "ig", "title": "Просмотры (Reels)",
         "free": {
-            "price_per_1000": 0, "min": 500, "max": 500, "cooldown_days": 1,
+            "price_per_1000": 0, "min": 500, "max": 500, "cooldown_days": 7,
             "link_type": "ig_post", "label": "Бесплатное продвижение",
-            "extra": "Доступно 1 раз в день.",
+            "extra": "Доступно 1 раз в неделю.",
         },
         "paid": {
             "price_per_1000": 7000, "min": 1000, "max": 1000000,
