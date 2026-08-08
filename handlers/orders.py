@@ -1,10 +1,12 @@
+import logging
 from aiogram import Router, F, Bot
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 import database as db
-from config import ADMIN_CHAT_ID
+from config import ADMIN_CHAT_ID, ORDERS_CHAT_ID
 from keyboards import (
     BTN_ORDER, BTN_BACK, BTN_FREE_PROMO,
+    BTN_NUMBER, BTN_MY_ORDERS, BTN_TOPUP, BTN_BALANCE, BTN_HELP,
     main_menu_kb, back_only_kb, platforms_kb, services_kb, variants_kb,
     order_action_kb, confirm_order_kb, admin_order_kb, admin_ban_notice_kb,
     free_promo_platforms_kb, free_promo_services_kb,
@@ -13,8 +15,15 @@ from states import OrderStates
 from services import (
     PLATFORM_NAMES, get_variant_cfg, build_info_text, calc_price, validate_link, LINK_HINTS,
 )
+from utils import user_ref
+from handlers.menu import take_number, my_orders, my_balance, help_start
+from handlers.balance import topup_start
 
 router = Router()
+
+# защита от повторного нажатия "Отправить" (двойной тап создавал два заказа
+# и списывал деньги дважды, т.к. проверка баланса и создание заказа не были атомарны)
+_processing_confirm: set[int] = set()
 
 
 async def _reject_if_banned(target, user_id: int) -> bool:
@@ -145,6 +154,29 @@ async def start_order(callback: CallbackQuery, state: FSMContext):
     )
 
 
+_MENU_INTERRUPT_TEXTS = {BTN_NUMBER, BTN_MY_ORDERS, BTN_TOPUP, BTN_BALANCE, BTN_HELP}
+
+
+@router.message(OrderStates.waiting_amount, F.text.in_(_MENU_INTERRUPT_TEXTS))
+@router.message(OrderStates.waiting_link, F.text.in_(_MENU_INTERRUPT_TEXTS))
+async def interrupt_order_flow(message: Message, state: FSMContext):
+    """Если пользователь на шаге ввода количества/ссылки нажал другую кнопку
+    главного меню — раньше это воспринималось как неверный ввод. Теперь
+    прерываем оформление заказа и сразу переходим в нужный раздел."""
+    await state.clear()
+    text = message.text
+    if text == BTN_NUMBER:
+        await take_number(message)
+    elif text == BTN_MY_ORDERS:
+        await my_orders(message)
+    elif text == BTN_TOPUP:
+        await topup_start(message)
+    elif text == BTN_BALANCE:
+        await my_balance(message)
+    elif text == BTN_HELP:
+        await help_start(message, state)
+
+
 @router.message(OrderStates.waiting_amount, F.text == BTN_BACK)
 async def amount_back(message: Message, state: FSMContext):
     await state.clear()
@@ -251,53 +283,68 @@ async def cancel_order_draft(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "confirm_order")
 async def confirm_order(callback: CallbackQuery, state: FSMContext, bot: Bot):
-    data = await state.get_data()
-    cfg = get_variant_cfg(data["service_key"], data["variant"])
     user_id = callback.from_user.id
 
-    if data["price"] > 0:
-        balance = await db.get_balance(user_id)
-        if balance < data["price"]:
-            await callback.answer("Недостаточно средств.", show_alert=True)
-            await state.clear()
+    if user_id in _processing_confirm:
+        # уже обрабатывается предыдущее нажатие той же кнопки — игнорируем повтор
+        await callback.answer("Заявка уже обрабатывается, подождите…", show_alert=True)
+        return
+    _processing_confirm.add(user_id)
+    try:
+        data = await state.get_data()
+        if not data or "service_key" not in data:
+            # состояние уже очищено (например, предыдущим тапом) — заявка либо
+            # уже создана, либо истекла; повторно ничего не делаем
+            await callback.answer("Эта заявка уже оформлена или устарела.", show_alert=True)
             return
-        await db.change_balance(user_id, -data["price"], reason=f"Заказ: {cfg['service_title']}")
-    else:
-        await db.mark_free_used(user_id, data["service_key"])
 
-    order_id = await db.create_order(
-        user_id=user_id,
-        platform=cfg["platform"],
-        service_key=data["service_key"],
-        variant=data["variant"],
-        amount=data["amount"],
-        link=data["link"],
-        price=data["price"],
-    )
+        cfg = get_variant_cfg(data["service_key"], data["variant"])
 
-    await state.clear()
-    await callback.message.delete()
-    await callback.message.answer(
-        f"✅ Заявка №{order_id} создана и передана в обработку.",
-        reply_markup=main_menu_kb(),
-    )
+        if data["price"] > 0:
+            balance = await db.get_balance(user_id)
+            if balance < data["price"]:
+                await callback.answer("Недостаточно средств.", show_alert=True)
+                await state.clear()
+                return
+            await db.change_balance(user_id, -data["price"], reason=f"Заказ: {cfg['service_title']}")
+        else:
+            await db.mark_free_used(user_id, data["service_key"])
 
-    if ADMIN_CHAT_ID:
-        price_text = "бесплатно" if data["price"] == 0 else f"{data['price']} so'm"
-        try:
-            await bot.send_message(
-                ADMIN_CHAT_ID,
-                f"📦 <b>Новая заявка №{order_id}</b>\n"
-                f"Пользователь: {user_id} (@{callback.from_user.username})\n"
-                f"Платформа: {PLATFORM_NAMES[cfg['platform']]}\n"
-                f"Услуга: {cfg['service_title']} — {cfg['label']}\n"
-                f"Количество: {data['amount']}\n"
-                f"Ссылка: {data['link']}\n"
-                f"Стоимость: {price_text}",
-                reply_markup=admin_order_kb(order_id, "В ожидании"),
-            )
-        except Exception:
-            pass
+        order_id = await db.create_order(
+            user_id=user_id,
+            platform=cfg["platform"],
+            service_key=data["service_key"],
+            variant=data["variant"],
+            amount=data["amount"],
+            link=data["link"],
+            price=data["price"],
+        )
+
+        await state.clear()
+        await callback.message.delete()
+        await callback.message.answer(
+            f"✅ Заявка №{order_id} создана и передана в обработку.",
+            reply_markup=main_menu_kb(),
+        )
+
+        if ORDERS_CHAT_ID:
+            price_text = "бесплатно" if data["price"] == 0 else f"{data['price']} so'm"
+            try:
+                await bot.send_message(
+                    ORDERS_CHAT_ID,
+                    f"📦 <b>Новая заявка №{order_id}</b>\n"
+                    f"Пользователь: {user_ref(user_id, callback.from_user.username)}\n"
+                    f"Платформа: {PLATFORM_NAMES[cfg['platform']]}\n"
+                    f"Услуга: {cfg['service_title']} — {cfg['label']}\n"
+                    f"Количество: {data['amount']}\n"
+                    f"Ссылка: {data['link']}\n"
+                    f"Стоимость: {price_text}",
+                    reply_markup=admin_order_kb(order_id, "В ожидании"),
+                )
+            except Exception:
+                logging.exception("Не удалось отправить заявку №%s в ORDERS_CHAT_ID", order_id)
+    finally:
+        _processing_confirm.discard(user_id)
 
 
 async def _notify_ban(message: Message, result: dict, bot: Bot):
@@ -319,9 +366,9 @@ async def _notify_ban(message: Message, result: dict, bot: Bot):
         try:
             await bot.send_message(
                 ADMIN_CHAT_ID,
-                f"🚫 Пользователь {message.from_user.id} (@{message.from_user.username}) "
+                f"🚫 Пользователь {user_ref(message.from_user.id, message.from_user.username)} "
                 f"заблокирован {kind} за спам некорректными данными.",
                 reply_markup=admin_ban_notice_kb(message.from_user.id),
             )
         except Exception:
-            pass
+            logging.exception("Не удалось отправить уведомление о бане в ADMIN_CHAT_ID")
