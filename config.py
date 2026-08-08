@@ -6,6 +6,10 @@ load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "0"))
 
+# Канал, куда падают новые заявки (вместо личного чата с ботом).
+# Бот должен быть добавлен в канал администратором с правом отправки сообщений.
+ORDERS_CHAT_ID = int(os.getenv("ORDERS_CHAT_ID", "-1004485065097"))
+
 DATABASE_URL = os.getenv("DATABASE_URL")
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     # Railway иногда выдаёт старый формат схемы, asyncpg требует postgresql://
