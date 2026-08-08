@@ -3,7 +3,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 import database as db
-from config import ADMIN_CHAT_ID, MIN_TOPUP_AMOUNT
+from config import ADMIN_CHAT_ID, ORDERS_CHAT_ID, MIN_TOPUP_AMOUNT
 from keyboards import (
     admin_order_kb, admin_panel_kb, admin_ban_notice_kb,
     admin_cancel_confirm_kb,
@@ -19,6 +19,12 @@ router = Router()
 
 def _is_admin_chat(chat_id: int) -> bool:
     return bool(ADMIN_CHAT_ID) and chat_id == ADMIN_CHAT_ID
+
+
+def _is_order_action_chat(chat_id: int) -> bool:
+    """Кнопки статуса заказа (⏳/✅/🚫) показываются в ORDERS_CHAT_ID (канал заявок),
+    а не в ADMIN_CHAT_ID — эта проверка разрешает управлять заказом из обоих чатов."""
+    return _is_admin_chat(chat_id) or (bool(ORDERS_CHAT_ID) and chat_id == ORDERS_CHAT_ID)
 
 
 # ================================================================= команды
@@ -287,6 +293,8 @@ async def admin_topup_confirm(callback: CallbackQuery, state: FSMContext, bot: B
 
 @router.callback_query(F.data == "admtopups:list")
 async def admin_topups_list(callback: CallbackQuery):
+    if not _is_admin_chat(callback.message.chat.id):
+        return
     topups = await db.get_pending_topups(limit=15)
     total = await db.count_pending_topups()
     if not topups:
@@ -306,6 +314,8 @@ async def admin_topups_list(callback: CallbackQuery):
 # ================================================================= статус заказа / отмена с возвратом
 @router.callback_query(F.data.startswith("adm:"))
 async def admin_order_status(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    if not _is_order_action_chat(callback.message.chat.id):
+        return
     parts = callback.data.split(":")
     action, order_id = parts[1], int(parts[2])
 
@@ -385,7 +395,7 @@ async def admin_order_status(callback: CallbackQuery, state: FSMContext, bot: Bo
 
 @router.message(AdminOrderStates.waiting_cancel_reason)
 async def admin_order_cancel_reason(message: Message, state: FSMContext, bot: Bot):
-    if not _is_admin_chat(message.chat.id):
+    if not _is_order_action_chat(message.chat.id):
         return
     if not message.text:
         await message.answer("❗ Введите текст причины отмены (или /cancel для отмены действия).")
@@ -434,12 +444,16 @@ async def admin_order_cancel_reason(message: Message, state: FSMContext, bot: Bo
 # ================================================================= статистика
 @router.callback_query(F.data == "admpanel:back")
 async def admpanel_back(callback: CallbackQuery, state: FSMContext):
+    if not _is_admin_chat(callback.message.chat.id):
+        return
     await state.clear()
     await callback.message.edit_text("🛠 Админ-панель:", reply_markup=admin_panel_kb())
 
 
 @router.callback_query(F.data.startswith("admstat:"))
 async def admin_stats(callback: CallbackQuery):
+    if not _is_admin_chat(callback.message.chat.id):
+        return
     kind = callback.data.split(":")[1]
 
     if kind == "users":
@@ -474,6 +488,8 @@ async def admin_stats(callback: CallbackQuery):
 # ================================================================= заказы: платформа → услуга → список
 @router.callback_query(F.data == "admord:platforms")
 async def admord_platforms(callback: CallbackQuery):
+    if not _is_admin_chat(callback.message.chat.id):
+        return
     s = await db.stats_orders()
     text = (
         f"📦 <b>Заказы</b>\n\n"
@@ -486,6 +502,8 @@ async def admord_platforms(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("admordplat:"))
 async def admordplat(callback: CallbackQuery):
+    if not _is_admin_chat(callback.message.chat.id):
+        return
     platform = callback.data.split(":")[1]
     plat_name = PLATFORM_NAMES.get(platform, platform)
     await callback.message.edit_text(
@@ -517,18 +535,24 @@ async def _render_order_list(callback: CallbackQuery, platform: str, service_key
 
 @router.callback_query(F.data.startswith("admordsvc:"))
 async def admordsvc(callback: CallbackQuery):
+    if not _is_admin_chat(callback.message.chat.id):
+        return
     _, platform, service_key = callback.data.split(":")
     await _render_order_list(callback, platform, service_key, 0, "all")
 
 
 @router.callback_query(F.data.startswith("admordlist:"))
 async def admordlist(callback: CallbackQuery):
+    if not _is_admin_chat(callback.message.chat.id):
+        return
     _, platform, service_key, offset, status = callback.data.split(":")
     await _render_order_list(callback, platform, service_key, int(offset), status)
 
 
 @router.callback_query(F.data.startswith("admorditem:"))
 async def admorditem(callback: CallbackQuery):
+    if not _is_admin_chat(callback.message.chat.id):
+        return
     _, order_id, platform, service_key, offset, status = callback.data.split(":")
     order_id, offset = int(order_id), int(offset)
     order = await db.get_order(order_id)
@@ -562,6 +586,8 @@ async def admorditem(callback: CallbackQuery):
 # ================================================================= рассылка
 @router.callback_query(F.data == "broadcast:start")
 async def broadcast_start(callback: CallbackQuery, state: FSMContext):
+    if not _is_admin_chat(callback.message.chat.id):
+        return
     await state.set_state(BroadcastStates.waiting_target)
     await callback.message.edit_text(
         "📢 Кому отправить рассылку?", reply_markup=broadcast_target_kb()
@@ -570,6 +596,8 @@ async def broadcast_start(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(BroadcastStates.waiting_target, F.data.startswith("bctarget:"))
 async def broadcast_target(callback: CallbackQuery, state: FSMContext):
+    if not _is_admin_chat(callback.message.chat.id):
+        return
     target = callback.data.split(":")[1]
     await state.update_data(target=target)
     if target == "one":
@@ -582,6 +610,8 @@ async def broadcast_target(callback: CallbackQuery, state: FSMContext):
 
 @router.message(BroadcastStates.waiting_user_id)
 async def broadcast_user_id(message: Message, state: FSMContext):
+    if not _is_admin_chat(message.chat.id):
+        return
     if not message.text.isdigit():
         await message.answer("❗ Введите числовой ID пользователя.")
         return
@@ -592,6 +622,8 @@ async def broadcast_user_id(message: Message, state: FSMContext):
 
 @router.message(BroadcastStates.waiting_text)
 async def broadcast_text(message: Message, state: FSMContext):
+    if not _is_admin_chat(message.chat.id):
+        return
     await state.update_data(text=message.text)
     await state.set_state(BroadcastStates.confirm)
     data = await state.get_data()
@@ -604,6 +636,8 @@ async def broadcast_text(message: Message, state: FSMContext):
 
 @router.callback_query(BroadcastStates.confirm, F.data == "bcsend")
 async def broadcast_send(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    if not _is_admin_chat(callback.message.chat.id):
+        return
     data = await state.get_data()
     text = data["text"]
 
