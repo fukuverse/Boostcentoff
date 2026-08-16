@@ -409,12 +409,17 @@ async def admin_order_cancel_reason(message: Message, state: FSMContext, bot: Bo
         await message.answer("Заказ не найден.")
         await state.clear()
         return
-    if order["status"] in ("Сделано", "Отменено"):
-        await message.answer(f"Заказ уже в статусе «{order['status']}», отмена недоступна.")
+
+    # атомарная проверка+смена статуса — защита от двойного возврата денег,
+    # если тот же заказ отменяется параллельно (два админа или дубль сообщения)
+    cancelled_now = await db.cancel_order_if_pending(order_id)
+    if not cancelled_now:
+        fresh = await db.get_order(order_id)
+        current_status = fresh["status"] if fresh else order["status"]
+        await message.answer(f"Заказ уже в статусе «{current_status}», отмена недоступна.")
         await state.clear()
         return
 
-    await db.set_order_status(order_id, "Отменено")
     if order["price"] > 0:
         await db.change_balance(
             order["user_id"], order["price"],
