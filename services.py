@@ -1,12 +1,13 @@
 import re
 from math import ceil
 
-PLATFORM_NAMES = {"tg": "Telegram", "ig": "Instagram", "yt": "YouTube"}
+PLATFORM_NAMES = {"tg": "Telegram", "ig": "Instagram", "yt": "YouTube", "tt": "TikTok"}
 
 PLATFORM_SERVICES = {
     "tg": ["tg_views", "tg_subs", "tg_reactions"],
     "ig": ["ig_views", "ig_subs", "ig_reactions"],
     "yt": ["yt_views", "yt_subs"],
+    "tt": ["tt_views", "tt_likes", "tt_subs", "tt_reposts", "tt_comments"],
 }
 
 SERVICE_LABELS = {
@@ -18,6 +19,11 @@ SERVICE_LABELS = {
     "ig_reactions": "❤️ Реакции",
     "yt_views": "👁 Просмотры",
     "yt_subs": "👤 Подписчики",
+    "tt_views": "👁 Просмотры",
+    "tt_likes": "❤️ Лайки",
+    "tt_subs": "👤 Подписчики",
+    "tt_reposts": "🔁 Репосты",
+    "tt_comments": "💬 Комментарии",
 }
 
 # link_type определяет что именно должен прислать пользователь и какой regex использовать
@@ -108,6 +114,42 @@ SERVICES = {
         "tiers": [{"key": "nog", "label": "Без гарантии", "price_per_1000": 120000}],
         "min": 1000, "max": 1000000, "link_type": "yt_channel",
     },
+    "tt_views": {
+        "platform": "tt", "title": "Просмотры",
+        "paid": {
+            "price_per_1000": 3000, "min": 1000, "max": 1000000,
+            "link_type": "tt_video", "label": "Платное продвижение",
+        },
+    },
+    "tt_likes": {
+        "platform": "tt", "title": "Лайки",
+        "paid": {
+            "price_per_1000": 18000, "min": 1000, "max": 1000000,
+            "link_type": "tt_video", "label": "Платное продвижение",
+        },
+    },
+    "tt_subs": {
+        "platform": "tt", "title": "Подписчики",
+        "tiers": [
+            {"key": "g1m", "label": "1 месяц гарантия", "price_per_1000": 130000},
+            {"key": "g3m", "label": "3 месяца гарантия", "price_per_1000": 300000},
+        ],
+        "min": 1000, "max": 1000000, "link_type": "tt_profile",
+    },
+    "tt_reposts": {
+        "platform": "tt", "title": "Репосты",
+        "paid": {
+            "price_per_1000": 55000, "min": 1000, "max": 1000000,
+            "link_type": "tt_video", "label": "Платное продвижение",
+        },
+    },
+    "tt_comments": {
+        "platform": "tt", "title": "Комментарии",
+        "paid": {
+            "price_per_1000": 27000, "min": 1000, "max": 1000000,
+            "link_type": "tt_video", "label": "Платное продвижение",
+        },
+    },
 }
 
 LINK_PATTERNS = {
@@ -117,6 +159,8 @@ LINK_PATTERNS = {
     "ig_post": re.compile(r'^(https?://)?(www\.)?instagram\.com/(p|reel|reels)/[A-Za-z0-9_-]+/?'),
     "yt_video": re.compile(r'^(https?://)?(www\.)?(youtube\.com/watch\?v=[\w-]+|youtu\.be/[\w-]+)'),
     "yt_channel": re.compile(r'^(https?://)?(www\.)?youtube\.com/(channel/|c/|@)[\w-]+'),
+    "tt_video": re.compile(r'^(https?://)?(www\.)?(vm\.)?tiktok\.com/(@[\w.-]+/video/\d+|[\w-]+)/?'),
+    "tt_profile": re.compile(r'^(https?://)?(www\.)?tiktok\.com/@[\w.-]+/?$'),
 }
 
 LINK_HINTS = {
@@ -126,6 +170,8 @@ LINK_HINTS = {
     "ig_post": "Отправьте ссылку на пост/Reels, например:\nhttps://instagram.com/p/xxxxx",
     "yt_video": "Отправьте ссылку на видео, например:\nhttps://youtube.com/watch?v=xxxxx",
     "yt_channel": "Отправьте ссылку на канал, например:\nhttps://youtube.com/@channel",
+    "tt_video": "Отправьте ссылку на видео, например:\nhttps://www.tiktok.com/@username/video/1234567890",
+    "tt_profile": "Отправьте ссылку на профиль, например:\nhttps://www.tiktok.com/@username",
 }
 
 
