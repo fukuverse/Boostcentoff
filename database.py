@@ -235,6 +235,22 @@ async def set_order_status(order_id: int, status: str):
         await con.execute("UPDATE orders SET status=$2 WHERE id=$1", order_id, status)
 
 
+async def cancel_order_if_pending(order_id: int) -> bool:
+    """Атомарно переводит заказ в статус 'Отменено', только если он ещё не в
+    конечном статусе (Сделано/Отменено). Возвращает True, если статус реально
+    был изменён этим вызовом — только тогда нужно возвращать деньги.
+    Защищает от двойного возврата при одновременной обработке заказа
+    (например, двумя админами или двойным нажатием)."""
+    async with pool.acquire() as con:
+        row = await con.fetchrow(
+            "UPDATE orders SET status='Отменено' "
+            "WHERE id=$1 AND status NOT IN ('Сделано','Отменено') "
+            "RETURNING id",
+            order_id,
+        )
+        return row is not None
+
+
 def _orders_where(status: str | None, platform: str | None, service_key: str | None):
     conditions = []
     params = []
