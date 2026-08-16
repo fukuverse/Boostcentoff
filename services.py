@@ -160,7 +160,7 @@ LINK_PATTERNS = {
     "yt_video": re.compile(r'^(https?://)?(www\.)?(youtube\.com/watch\?v=[\w-]+|youtu\.be/[\w-]+)'),
     "yt_channel": re.compile(r'^(https?://)?(www\.)?youtube\.com/(channel/|c/|@)[\w-]+'),
     "tt_video": re.compile(r'^(https?://)?(www\.)?(vm\.)?tiktok\.com/(@[\w.-]+/video/\d+|[\w-]+)/?'),
-    "tt_profile": re.compile(r'^(https?://)?(www\.)?tiktok\.com/@[\w.-]+/?$'),
+    "tt_profile": re.compile(r'^(https?://)?(www\.)?tiktok\.com/@[\w.-]+/?$|^@[\w.-]{2,24}$'),
 }
 
 LINK_HINTS = {
@@ -171,7 +171,7 @@ LINK_HINTS = {
     "yt_video": "Отправьте ссылку на видео, например:\nhttps://youtube.com/watch?v=xxxxx",
     "yt_channel": "Отправьте ссылку на канал, например:\nhttps://youtube.com/@channel",
     "tt_video": "Отправьте ссылку на видео, например:\nhttps://www.tiktok.com/@username/video/1234567890",
-    "tt_profile": "Отправьте ссылку на профиль, например:\nhttps://www.tiktok.com/@username",
+    "tt_profile": "Отправьте ссылку на профиль или @username, например:\nhttps://www.tiktok.com/@username",
 }
 
 
