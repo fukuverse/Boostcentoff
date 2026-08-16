@@ -6,6 +6,7 @@ import database as db
 from config import CLICK_CARD, PAYNET_CARD, ADMIN_CHAT_ID
 from keyboards import (
     BTN_TOPUP, BTN_BACK, BTN_NUMBER, BTN_MY_ORDERS, BTN_BALANCE, BTN_HELP,
+    BTN_ORDER, BTN_FREE_PROMO,
     main_menu_kb, back_only_kb, topup_methods_kb, admin_topup_kb,
 )
 from states import TopUpStates
@@ -79,14 +80,19 @@ async def receipt_received(message: Message, state: FSMContext, bot: Bot):
             logging.exception("Не удалось отправить заявку на пополнение №%s в ADMIN_CHAT_ID", topup_id)
 
 
-_MENU_INTERRUPT_TEXTS = {BTN_NUMBER, BTN_MY_ORDERS, BTN_BALANCE, BTN_HELP}
+_MENU_INTERRUPT_TEXTS = {
+    BTN_NUMBER, BTN_MY_ORDERS, BTN_BALANCE, BTN_HELP,
+    BTN_ORDER, BTN_FREE_PROMO,
+}
 
 
 @router.message(TopUpStates.waiting_receipt, F.text.in_(_MENU_INTERRUPT_TEXTS))
 async def interrupt_topup_flow(message: Message, state: FSMContext):
     """Если во время ожидания чека пользователь нажал другую кнопку меню —
     раньше бот просил прислать фото вместо перехода в нужный раздел."""
-    from handlers.menu import take_number, my_orders, my_balance, help_start  # локальный импорт: избегаем цикла menu<->balance при старте
+    # локальные импорты: избегаем циклов balance<->menu и balance<->orders при старте
+    from handlers.menu import take_number, my_orders, my_balance, help_start
+    from handlers.orders import order_start, free_promo_start
 
     await state.clear()
     text = message.text
@@ -98,6 +104,10 @@ async def interrupt_topup_flow(message: Message, state: FSMContext):
         await my_balance(message)
     elif text == BTN_HELP:
         await help_start(message, state)
+    elif text == BTN_ORDER:
+        await order_start(message)
+    elif text == BTN_FREE_PROMO:
+        await free_promo_start(message)
 
 
 @router.message(TopUpStates.waiting_receipt)
