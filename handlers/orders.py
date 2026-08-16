@@ -154,7 +154,10 @@ async def start_order(callback: CallbackQuery, state: FSMContext):
     )
 
 
-_MENU_INTERRUPT_TEXTS = {BTN_NUMBER, BTN_MY_ORDERS, BTN_TOPUP, BTN_BALANCE, BTN_HELP}
+_MENU_INTERRUPT_TEXTS = {
+    BTN_NUMBER, BTN_MY_ORDERS, BTN_TOPUP, BTN_BALANCE, BTN_HELP,
+    BTN_ORDER, BTN_FREE_PROMO,
+}
 
 
 @router.message(OrderStates.waiting_amount, F.text.in_(_MENU_INTERRUPT_TEXTS))
@@ -175,6 +178,10 @@ async def interrupt_order_flow(message: Message, state: FSMContext):
         await my_balance(message)
     elif text == BTN_HELP:
         await help_start(message, state)
+    elif text == BTN_ORDER:
+        await order_start(message)
+    elif text == BTN_FREE_PROMO:
+        await free_promo_start(message)
 
 
 @router.message(OrderStates.waiting_amount, F.text == BTN_BACK)
